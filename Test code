@@ -1,0 +1,496 @@
+
+import {
+  AddBoxOutlined,
+  InfoOutlined,
+  PeopleAltOutlined,
+  Error,
+} from "@mui/icons-material";
+import {
+  Avatar,
+  Box,
+  Button,
+  Hidden,
+  IconButton,
+  MenuItem,
+  Paper,
+  Select,
+  Tab,
+  Tabs,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from "@mui/material";
+import Table from "components/Table";
+import { useEffect, useState } from "react";
+import { authorizedFetch, drawer, getPermissions } from "utils";
+import DrawerContent from "./DrawerContent";
+import moment from "moment";
+import AssignVendors from "./AssignToVendors";
+import { BOLT_URL } from "utils/constants";
+import { useQuery } from "react-query";
+import RestrictedUsersDialog from "./RestrictedUsersDialog";
+import Search from "../../../components/Search";
+
+const List = ({
+  search,
+  setSearch,
+  masterView,
+  refetchStats,
+  totalChargers,
+  totalBooked,
+  totalAvailable,
+  totalRestrictedChargers,
+  health,
+  setHealth,
+}: any) => {
+  const theme = useTheme();
+  const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
+
+  const { canWrite } = getPermissions("charger:chargers");
+
+  const [tab, setTab] = useState(0);
+  const [restrictedUsersDialog, setRestrictedUsersDialog] = useState({
+    open: false,
+    data: null,
+  });
+
+  const [selectedRows, setSelectedRows] = useState<any>([]);
+  const [vendorsDialog, setVendorsDialog] = useState({
+    open: false,
+    data: {},
+  });
+
+  const [healthFilter, setHealthFilter] = useState("All Health Status");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const url = `${BOLT_URL}/company/getVendors`;
+  const { data: vendorData } = useQuery(["getVendors", masterView], () =>
+    authorizedFetch(url, {
+      headers: {
+        master: masterView,
+      },
+    })
+  );
+
+  const chargersUrl = `${BOLT_URL}/company/chargers?${
+    !search
+      ? `first=${pageSize}&skip=${pageSize * (page - 1)}&health=${health}&tab=${
+          tab === 0
+            ? "ALL"
+            : tab === 1
+            ? "BOOKED"
+            : tab === 2
+            ? "AVAILABLE"
+            : "RESTRICTED"
+        }`
+      : `search=${search}&health=${health}`
+  }`;
+
+  const {
+    isLoading: chargersLoading,
+    data,
+    refetch: refetchChargers,
+  } = useQuery(
+    ["getChargers", page, pageSize, tab, health, search, masterView],
+    () =>
+      authorizedFetch(chargersUrl, {
+        headers: {
+          master: masterView,
+        },
+      })
+  );
+
+  useEffect(() => {
+    return () => {
+      drawer.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+    setPageSize(10);
+  }, [health]);
+
+  return (
+    <>
+      <RestrictedUsersDialog
+        key={restrictedUsersDialog.data}
+        open={restrictedUsersDialog.open}
+        handleClose={() =>
+          setRestrictedUsersDialog({ ...restrictedUsersDialog, open: false })
+        }
+        charger={restrictedUsersDialog.data}
+      />
+      <Paper
+        sx={{
+          width: 1,
+          // p: 3,
+          boxShadow: "0 0 4px #1C295A14",
+          borderRadius: 2,
+          overflow: "hidden",
+        }}
+      >
+        <Box
+          sx={{
+            p: { xs: 2, md: 3 },
+            pb: 2.75,
+            display: { xs: "block", md: "flex" },
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Box>
+            <Tabs
+              value={tab}
+              onChange={(e, tab) => setTab(tab)}
+              {...(!search ? { className: "dense" } : {})}
+              variant="scrollable"
+            >
+              <Tab
+                label="All"
+                className="hasCount"
+                sx={{
+                  "&:after": {
+                    content: `"${
+                      search
+                        ? (data?.data?.chargers || []).length
+                        : totalChargers || "-"
+                    }"`,
+                  },
+                }}
+              />
+
+              {!search && (
+                <Tab
+                  label="Booked"
+                  className="hasCount"
+                  sx={{
+                    "&:after": {
+                      content: `"${totalBooked || "-"}"`,
+                    },
+                  }}
+                />
+              )}
+              {!search && (
+                <Tab
+                  label="Available"
+                  className="hasCount"
+                  sx={{
+                    "&:after": {
+                      content: `"${totalAvailable || "-"}"`,
+                    },
+                  }}
+                />
+              )}
+              {!search && (
+                <Tab
+                  label="Restricted"
+                  className="hasCount"
+                  sx={{
+                    "&:after": {
+                      content: `"${totalRestrictedChargers || "-"}"`,
+                    },
+                  }}
+                />
+              )}
+            </Tabs>
+          </Box>
+          <Box display="flex">
+            <Hidden mdDown>
+              <Box mt={1} mr={2}>
+                <Search
+                  handleSearch={(value) => {
+                    setSearch(value);
+                  }}
+                  persist
+                  enableClear
+                />
+              </Box>
+              <Select
+                className="primary"
+                value={healthFilter}
+                onChange={(e) => {
+                  setHealthFilter(e.target.value);
+                  setHealth(
+                    e.target.value !== "All Health Status" ? e.target.value : ""
+                  );
+                }}
+                sx={{ width: "170px !important" }}
+              >
+                {[
+                  "All Health Status",
+                  "Healthy",
+                  "Moderate",
+                  "Critical",
+                  "Inactive",
+                ].map((filter, i) => (
+                  <MenuItem key={i} value={filter}>
+                    {filter}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Hidden>
+          </Box>
+
+          {/* <FilterBy /> */}
+        </Box>
+        <Table
+          px={isMdUp ? 3 : 2}
+          rowCount={
+            search
+              ? (data?.data?.chargers || []).length
+              : tab === 0
+              ? totalChargers
+              : tab === 1
+              ? totalBooked
+              : tab === 2
+              ? totalAvailable
+              : ""
+          }
+          {...(!search
+            ? {
+                serverSidePagination: true,
+                activePage: page,
+                activePageSize: pageSize,
+                onPageChange: (value) => setPage(value),
+                onPageSizeChange: (value) => setPageSize(value),
+              }
+            : {})}
+          loading={chargersLoading}
+          setSelectedRows={setSelectedRows}
+          selectedRows={selectedRows}
+          selectable={canWrite}
+          // selectOnClick
+          rows={data?.data?.chargers || []}
+          columns={[
+            {
+              key: "charger.chargerId",
+              label: "Charger UID",
+              Render: (row) => (
+                <Box display="flex" alignItems="center">
+                  {row.charger.chargerId}
+                  {["RESTRICTED_FREE", "RESTRICTED_PAID"].includes(
+                    row.charger.usageType
+                  ) && (
+                    <Tooltip title="Restricted Charger">
+                      <Box
+                        sx={{
+                          width: "17px",
+                          height: "17px",
+                          border: "1px solid",
+                          borderColor: (theme) =>
+                            theme.customColors.redSecondary,
+                          borderRadius: "3px",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          fontSize: 10,
+                          color: (theme) => theme.customColors.redSecondary,
+                          ml: 1,
+                          cursor: "default",
+                        }}
+                      >
+                        R
+                      </Box>
+                    </Tooltip>
+                  )}
+                </Box>
+              ),
+            },
+
+            {
+              key: "vendor.name",
+              label: "Vendor",
+              Render: (row) =>
+                row?.vendor?.name ? row?.vendor?.name : "Unassigned",
+            },
+            {
+              key: "charger.lastBookingDate",
+              label: "Last Used",
+              Render: (row) =>
+                moment(
+                  row.charger.lastBookingDate !== null
+                    ? row.charger.lastBookingDate
+                    : row.charger.lastPingDate !== null
+                    ? row.availability.createdAt
+                    : "2022-01-19T09:53:10.756Z"
+                ).format("ddd, MMM DD, YYYY"),
+            },
+            {
+              key: "chargerStats.totalEnergyConsumed",
+              label: "Energy Dispensed",
+              format: (value) => (value ? value.toFixed(3) + " kWh" : "0 kWh"),
+            },
+            {
+              key: "charger.health",
+              label: "Health",
+              Render: (row) =>
+                row.charger.health === "HEALTHY" ? (
+                  <Tooltip title="Charger health is good">
+                    <Avatar
+                      variant="status"
+                      sx={{
+                        background: "#3BB89E30",
+                        color: "#3BB89E",
+                        borderColor: "#3BB89E30",
+                      }}
+                    >
+                      {row.charger.health}
+                    </Avatar>
+                  </Tooltip>
+                ) : row.charger.health === "MODERATE" ? (
+                  <Tooltip title="Charger has not been pinged since the past 15 days">
+                    <Avatar
+                      variant="status"
+                      sx={{
+                        background: "#FFFF0030",
+                        color: "#ffc800",
+                        borderColor: "#FFFF0030",
+                      }}
+                    >
+                      {row.charger.health}
+                    </Avatar>
+                  </Tooltip>
+                ) : row.charger.health === "CRITICAL" ? (
+                  <Tooltip title="Charger has not been pinged since the past 30 days">
+                    <Avatar
+                      variant="status"
+                      sx={{
+                        background: "#FFA50030",
+                        color: "orange",
+                        borderColor: "#FFA50030",
+                      }}
+                    >
+                      {row.charger.health}
+                    </Avatar>
+                  </Tooltip>
+                ) : row.charger.health === "INACTIVE" ? (
+                  <Tooltip title="Charger has not been pinged since the past 45 days">
+                    <Avatar
+                      variant="status"
+                      sx={{
+                        background: "#FF000030",
+                        color: "red",
+                        borderColor: "#FF000030",
+                      }}
+                    >
+                      {row.charger.health}
+                    </Avatar>
+                  </Tooltip>
+                ) : (
+                  ""
+                ),
+            },
+            {
+              key: "actions",
+              label: "Actions",
+              Render: (row) => (
+                <>
+                  <Tooltip title="Info">
+                    <IconButton
+                      size="small"
+                      sx={{
+                        color: (theme) => theme.customColors.grey,
+                        mr: 0.5,
+                      }}
+                      onClick={() =>
+                        drawer.open(
+                          <DrawerContent
+                            charger={row}
+                            vendors={vendorData?.data || []}
+                            refetchStats={refetchStats}
+                            refetchChargers={refetchChargers}
+                            openTab={0}
+                          />
+                        )
+                      }
+                      children={<InfoOutlined fontSize="small" />}
+                    />
+                  </Tooltip>
+                  {["RESTRICTED_FREE", "RESTRICTED_PAID"].includes(
+                    row.charger.usageType
+                  ) && (
+                    <Tooltip title="Assign Users">
+                      <IconButton
+                        size="small"
+                        sx={{ color: (theme) => theme.customColors.grey }}
+                        onClick={() =>
+                          setRestrictedUsersDialog({ open: true, data: row })
+                        }
+                        children={<PeopleAltOutlined fontSize="small" />}
+                      />
+                    </Tooltip>
+                  )}
+
+                  {["MODERATE", "CRITICAL", "INACTIVE"].includes(
+                    row.charger.health
+                  ) && (
+                    <Tooltip title="Action Required">
+                      <IconButton
+                        size="small"
+                        sx={{
+                          color:
+                            row.charger.health === "MODERATE"
+                              ? "#ffc80090"
+                              : row.charger.health === "CRITICAL"
+                              ? "#FFA50090"
+                              : row.charger.health === "INACTIVE"
+                              ? "#FF000090"
+                              : "",
+                        }}
+                        onClick={() =>
+                          drawer.open(
+                            <DrawerContent
+                              charger={row}
+                              vendors={vendorData?.data || []}
+                              refetchStats={refetchStats}
+                              refetchChargers={refetchChargers}
+                              openTab={4}
+                            />
+                          )
+                        }
+                        children={<Error fontSize="small" />}
+                      />
+                    </Tooltip>
+                  )}
+                </>
+              ),
+            },
+          ]}
+          toolbar={() => (
+            <>
+              <Button
+                sx={{ mr: 1.5 }}
+                startIcon={<AddBoxOutlined />}
+                onClick={() => {
+                  setVendorsDialog({ open: true, data: selectedRows });
+                }}
+              >
+                Assign Vendor
+              </Button>
+              {/* <Button startIcon={<DeleteOutline />}>Delete</Button> */}
+            </>
+          )}
+        />
+      </Paper>
+      <AssignVendors
+        open={vendorsDialog.open}
+        data={vendorsDialog.data}
+        handleClose={() => {
+          setVendorsDialog({ ...vendorsDialog, open: false });
+          console.log("vendor dialogue box");
+        }}
+        refetchStats={refetchStats}
+        vendors={vendorData?.data || []}
+      />
+    </>
+  );
+};
+
+export default List;
